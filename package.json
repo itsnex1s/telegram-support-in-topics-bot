@@ -1,0 +1,29 @@
+{
+  "name": "telegram-support-in-topics-bot",
+  "version": "1.0.0",
+  "description": "Minimal Telegram support bot that creates forum topics for each user conversation",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "SUPPORT_BOT_TOKEN=test SUPPORT_STAFF_GROUP_ID=-100123456789 node --test --import tsx \"tests/**/*.test.ts\""
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "support",
+    "forum-topics",
+    "helpdesk",
+    "grammy"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "grammy": "^1.35.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}
