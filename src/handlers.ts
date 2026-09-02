@@ -50,8 +50,8 @@ export function registerHandlers(bot: Bot): void {
   });
 
   // Operator commands inside forum topics
-  bot.command('close', async (ctx) => {
-    if (ctx.chat.id !== staffGroupId || !ctx.msg.message_thread_id) return;
+  bot.command('close', async (ctx, next) => {
+    if (ctx.chat.id !== staffGroupId || !ctx.msg.message_thread_id) return next();
     const topicId = ctx.msg.message_thread_id;
     const userId = store.getUserId(topicId);
     try {
@@ -64,8 +64,8 @@ export function registerHandlers(bot: Bot): void {
     }
   });
 
-  bot.command('reopen', async (ctx) => {
-    if (ctx.chat.id !== staffGroupId || !ctx.msg.message_thread_id) return;
+  bot.command('reopen', async (ctx, next) => {
+    if (ctx.chat.id !== staffGroupId || !ctx.msg.message_thread_id) return next();
     try {
       await bot.api.reopenForumTopic(staffGroupId, ctx.msg.message_thread_id);
     } catch {
@@ -73,8 +73,8 @@ export function registerHandlers(bot: Bot): void {
     }
   });
 
-  bot.command('ban', async (ctx) => {
-    if (ctx.chat.id !== staffGroupId || !ctx.msg.message_thread_id) return;
+  bot.command('ban', async (ctx, next) => {
+    if (ctx.chat.id !== staffGroupId || !ctx.msg.message_thread_id) return next();
     const topicId = ctx.msg.message_thread_id;
     const userId = store.getUserId(topicId);
     if (!userId) {
@@ -91,8 +91,8 @@ export function registerHandlers(bot: Bot): void {
     await ctx.reply(`User ${userId} has been banned.`);
   });
 
-  bot.command('unban', async (ctx) => {
-    if (ctx.chat.id !== staffGroupId || !ctx.msg.message_thread_id) return;
+  bot.command('unban', async (ctx, next) => {
+    if (ctx.chat.id !== staffGroupId || !ctx.msg.message_thread_id) return next();
     const userId = store.getUserId(ctx.msg.message_thread_id);
     if (!userId) {
       await ctx.reply('Could not find a user for this topic.');
