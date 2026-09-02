@@ -141,18 +141,22 @@ export function registerHandlers(bot: Bot): void {
 
       if (store.isBanned(userId)) return;
 
-      const topicId = store.getTopicId(userId) ?? (await openTopic(bot, ctx.from));
-
-      await deliverToTopic({
-        topicId,
-        send: async (threadId) => {
-          await ctx.forwardMessage(staffGroupId, { message_thread_id: threadId });
-        },
-        reopen: async (threadId) => {
-          await bot.api.reopenForumTopic(staffGroupId, threadId);
-        },
-        recreate: () => openTopic(bot, ctx.from),
-      });
+      try {
+        const topicId = store.getTopicId(userId) ?? (await openTopic(bot, ctx.from));
+        await deliverToTopic({
+          topicId,
+          send: async (threadId) => {
+            await ctx.forwardMessage(staffGroupId, { message_thread_id: threadId });
+          },
+          reopen: async (threadId) => {
+            await bot.api.reopenForumTopic(staffGroupId, threadId);
+          },
+          recreate: () => openTopic(bot, ctx.from),
+        });
+      } catch (err) {
+        await notifyUser(bot, userId, 'Sorry, your message could not be delivered. Please try again later.');
+        throw err;
+      }
       return;
     }
 

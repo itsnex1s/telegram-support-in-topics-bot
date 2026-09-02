@@ -171,3 +171,13 @@ test('operator is told when the reply could not be delivered', async () => {
   assert.match(String(notice.text), /blocked by the user/);
   assert.deepEqual(notice.reply_parameters, { message_id: update.message?.message_id });
 });
+
+test('user is told when their message could not be delivered', async () => {
+  store.setMapping(8, 19);
+  const { bot, calls } = createTestBot(({ method }) =>
+    method === 'forwardMessage' ? { ok: false, error_code: 400, description: 'Bad Request: not enough rights' } : undefined
+  );
+  await assert.rejects(bot.handleUpdate(userMessage(8, { text: 'x' })), /not enough rights/);
+  assert.deepEqual(methods(calls), ['forwardMessage', 'sendMessage']);
+  assert.equal(calls[1].payload.chat_id, 8);
+});
