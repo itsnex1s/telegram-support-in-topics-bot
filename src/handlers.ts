@@ -73,7 +73,7 @@ async function openTopic(bot: Bot, from: User): Promise<number> {
 export function registerHandlers(bot: Bot): void {
   // /start in private chat
   bot.command('start', async (ctx) => {
-    if (ctx.chat.type !== 'private') return;
+    if (ctx.chat.type !== 'private' || (ctx.from && store.isBanned(ctx.from.id))) return;
     await ctx.reply('Hello! Send your question and we will get back to you as soon as possible.');
   });
 

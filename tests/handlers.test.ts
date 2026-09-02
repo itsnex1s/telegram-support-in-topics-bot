@@ -181,3 +181,13 @@ test('user is told when their message could not be delivered', async () => {
   assert.deepEqual(methods(calls), ['forwardMessage', 'sendMessage']);
   assert.equal(calls[1].payload.chat_id, 8);
 });
+
+test('/start greets users but ignores banned ones', async () => {
+  store.ban(9);
+  const { bot, calls } = createTestBot();
+  await bot.handleUpdate(userMessage(9, command('/start')));
+  assert.equal(calls.length, 0);
+  await bot.handleUpdate(userMessage(10, command('/start')));
+  assert.deepEqual(methods(calls), ['sendMessage']);
+  assert.equal(calls[0].payload.chat_id, 10);
+});
