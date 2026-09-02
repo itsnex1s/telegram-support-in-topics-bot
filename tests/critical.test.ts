@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { GrammyError } from 'grammy';
 
 function moduleUrl(relPath: string): string {
   const abs = join(process.cwd(), relPath);
@@ -62,7 +63,11 @@ test('store.load: ENOENT starts fresh, corrupted JSON fails fast', async () => {
   assert.match(broken.stderr, /Failed to load store/);
 });
 
-test('handlers: forwardWithAutoReopen retries send after reopen', async () => {
+function apiError(description: string): GrammyError {
+  return new GrammyError('Call to forwardMessage failed!', { ok: false, error_code: 400, description }, 'forwardMessage', {});
+}
+
+test('handlers: forwardWithAutoReopen reopens the topic only on TOPIC_CLOSED', async () => {
   process.env.SUPPORT_BOT_TOKEN = 'test-token';
   process.env.SUPPORT_STAFF_GROUP_ID = '-100123456789';
   const mod = await import(moduleUrl('src/handlers.ts'));
@@ -73,13 +78,27 @@ test('handlers: forwardWithAutoReopen retries send after reopen', async () => {
     topicId: 42,
     sendToTopic: async () => {
       sends += 1;
-      if (sends === 1) throw new Error('topic closed');
+      if (sends === 1) throw apiError('Bad Request: TOPIC_CLOSED');
     },
     reopenTopic: async () => {
       reopens += 1;
     },
   });
-
   assert.equal(sends, 2);
   assert.equal(reopens, 1);
+
+  reopens = 0;
+  await assert.rejects(
+    mod.forwardWithAutoReopen({
+      topicId: 42,
+      sendToTopic: async () => {
+        throw apiError('Bad Request: not enough rights');
+      },
+      reopenTopic: async () => {
+        reopens += 1;
+      },
+    }),
+    /not enough rights/
+  );
+  assert.equal(reopens, 0, 'unrelated errors must not trigger a reopen');
 });

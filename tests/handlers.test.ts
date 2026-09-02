@@ -120,3 +120,15 @@ test('/close inside a topic closes it and notifies the user', async () => {
   assert.equal(calls[0].payload.message_thread_id, 13);
   assert.equal(calls[1].payload.chat_id, 3);
 });
+
+test('closed topic is reopened before the message is forwarded', async () => {
+  store.setMapping(4, 14);
+  let forwards = 0;
+  const { bot, calls } = createTestBot(({ method }) =>
+    method === 'forwardMessage' && ++forwards === 1
+      ? { ok: false, error_code: 400, description: 'Bad Request: TOPIC_CLOSED' }
+      : undefined
+  );
+  await bot.handleUpdate(userMessage(4, { text: 'still there?' }));
+  assert.deepEqual(methods(calls), ['forwardMessage', 'reopenForumTopic', 'forwardMessage']);
+});

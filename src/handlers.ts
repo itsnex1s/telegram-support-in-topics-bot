@@ -1,4 +1,4 @@
-import { Bot } from 'grammy';
+import { Bot, GrammyError } from 'grammy';
 import { config } from './config.js';
 import * as store from './store.js';
 
@@ -23,6 +23,10 @@ async function notifyUser(bot: Bot, userId: number, text: string): Promise<void>
   }
 }
 
+export function isTopicClosed(err: unknown): boolean {
+  return err instanceof GrammyError && err.description.includes('TOPIC_CLOSED');
+}
+
 export async function forwardWithAutoReopen(params: {
   topicId: number;
   sendToTopic: (topicId: number) => Promise<void>;
@@ -30,14 +34,9 @@ export async function forwardWithAutoReopen(params: {
 }): Promise<void> {
   try {
     await params.sendToTopic(params.topicId);
-    return;
-  } catch {
-    // Most common case: topic was closed by operator.
-    try {
-      await params.reopenTopic(params.topicId);
-    } catch {
-      // If reopen fails, still try one last send for transient API flaps.
-    }
+  } catch (err) {
+    if (!isTopicClosed(err)) throw err;
+    await params.reopenTopic(params.topicId);
     await params.sendToTopic(params.topicId);
   }
 }
