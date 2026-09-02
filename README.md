@@ -52,7 +52,6 @@ Create a bot via [@BotFather](https://t.me/BotFather) and save the token.
 4. Add the bot to the group and make it an admin with permissions:
    - Manage Topics
    - Send Messages
-   - Delete Messages
 
 ### 3. Get the group ID
 
