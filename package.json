@@ -1,6 +1,6 @@
 {
   "name": "telegram-support-in-topics-bot",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Minimal Telegram support bot that creates forum topics for each user conversation",
   "type": "module",
   "scripts": {
