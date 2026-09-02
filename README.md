@@ -71,13 +71,15 @@ SUPPORT_STORE_PATH=./data/topics.json        # optional, default
 
 ### 5. Install and run
 
+Requires [Node.js](https://nodejs.org) 22.9 or newer.
+
 ```bash
 npm install
 
 # Development (hot-reload)
 npm run dev
 
-# Production
+# Production (reads .env if present)
 npm run build
 npm start
 ```
