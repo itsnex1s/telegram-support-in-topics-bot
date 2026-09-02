@@ -1,16 +1,17 @@
 import { Bot, GrammyError } from 'grammy';
+import type { User } from 'grammy/types';
 import { config } from './config.js';
 import * as store from './store.js';
 
 const staffGroupId = config.SUPPORT_STAFF_GROUP_ID;
 const MAX_TOPIC_NAME = 128;
 
-function userDisplayName(from: { first_name: string; last_name?: string; username?: string }): string {
+function userDisplayName(from: User): string {
   const name = from.last_name ? `${from.first_name} ${from.last_name}` : from.first_name;
   return from.username ? `${name} (@${from.username})` : name;
 }
 
-function topicName(from: { first_name: string; last_name?: string; username?: string }): string {
+function topicName(from: User): string {
   const display = userDisplayName(from);
   return display.length <= MAX_TOPIC_NAME ? display : display.slice(0, MAX_TOPIC_NAME - 1) + '…';
 }
@@ -27,18 +28,46 @@ export function isTopicClosed(err: unknown): boolean {
   return err instanceof GrammyError && err.description.includes('TOPIC_CLOSED');
 }
 
-export async function forwardWithAutoReopen(params: {
+// Telegram answers "message thread not found" when an operator deleted the topic.
+export function isTopicGone(err: unknown): boolean {
+  return err instanceof GrammyError && err.description.includes('message thread not found');
+}
+
+export async function deliverToTopic(params: {
   topicId: number;
-  sendToTopic: (topicId: number) => Promise<void>;
-  reopenTopic: (topicId: number) => Promise<void>;
+  send: (topicId: number) => Promise<void>;
+  reopen: (topicId: number) => Promise<void>;
+  recreate: () => Promise<number>;
 }): Promise<void> {
   try {
-    await params.sendToTopic(params.topicId);
+    await params.send(params.topicId);
   } catch (err) {
-    if (!isTopicClosed(err)) throw err;
-    await params.reopenTopic(params.topicId);
-    await params.sendToTopic(params.topicId);
+    if (isTopicClosed(err)) {
+      await params.reopen(params.topicId);
+      await params.send(params.topicId);
+    } else if (isTopicGone(err)) {
+      await params.send(await params.recreate());
+    } else {
+      throw err;
+    }
   }
+}
+
+// Creates a forum topic for the user, stores the mapping and posts the user info card.
+async function openTopic(bot: Bot, from: User): Promise<number> {
+  const topic = await bot.api.createForumTopic(staffGroupId, topicName(from));
+  const topicId = topic.message_thread_id;
+  store.setMapping(from.id, topicId);
+
+  const info = [
+    `New conversation`,
+    `Name: ${userDisplayName(from)}`,
+    `ID: ${from.id}`,
+    from.username ? `Username: @${from.username}` : null,
+    `Date: ${new Date().toISOString()}`,
+  ].filter(Boolean).join('\n');
+  await bot.api.sendMessage(staffGroupId, info, { message_thread_id: topicId });
+  return topicId;
 }
 
 export function registerHandlers(bot: Bot): void {
@@ -112,33 +141,17 @@ export function registerHandlers(bot: Bot): void {
 
       if (store.isBanned(userId)) return;
 
-      let topicId = store.getTopicId(userId);
+      const topicId = store.getTopicId(userId) ?? (await openTopic(bot, ctx.from));
 
-      if (topicId === undefined) {
-        // Create new forum topic
-        const topic = await bot.api.createForumTopic(staffGroupId, topicName(ctx.from));
-        topicId = topic.message_thread_id;
-        store.setMapping(userId, topicId);
-
-        // Send info message to the topic
-        const info = [
-          `New conversation`,
-          `Name: ${userDisplayName(ctx.from)}`,
-          `ID: ${userId}`,
-          ctx.from.username ? `Username: @${ctx.from.username}` : null,
-          `Date: ${new Date().toISOString()}`,
-        ].filter(Boolean).join('\n');
-        await bot.api.sendMessage(staffGroupId, info, { message_thread_id: topicId });
-      }
-
-      await forwardWithAutoReopen({
+      await deliverToTopic({
         topicId,
-        sendToTopic: async (threadId) => {
+        send: async (threadId) => {
           await ctx.forwardMessage(staffGroupId, { message_thread_id: threadId });
         },
-        reopenTopic: async (threadId) => {
+        reopen: async (threadId) => {
           await bot.api.reopenForumTopic(staffGroupId, threadId);
         },
+        recreate: () => openTopic(bot, ctx.from),
       });
       return;
     }

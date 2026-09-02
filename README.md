@@ -25,7 +25,7 @@
 - One dependency — [grammY](https://grammy.dev)
 - Polling mode — no webhook, no HTTP server needed
 - JSON file persistence — no database required
-- Auto-reopens closed topics when users send new messages
+- Auto-reopens closed topics and recreates deleted ones when users send new messages
 - Operator commands: close, reopen, ban, unban
 
 ## How it works

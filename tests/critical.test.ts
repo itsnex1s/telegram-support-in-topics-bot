@@ -67,38 +67,36 @@ function apiError(description: string): GrammyError {
   return new GrammyError('Call to forwardMessage failed!', { ok: false, error_code: 400, description }, 'forwardMessage', {});
 }
 
-test('handlers: forwardWithAutoReopen reopens the topic only on TOPIC_CLOSED', async () => {
+test('handlers: deliverToTopic reopens on TOPIC_CLOSED, recreates on a missing thread, rethrows the rest', async () => {
   process.env.SUPPORT_BOT_TOKEN = 'test-token';
   process.env.SUPPORT_STAFF_GROUP_ID = '-100123456789';
   const mod = await import(moduleUrl('src/handlers.ts'));
 
-  let sends = 0;
-  let reopens = 0;
-  await mod.forwardWithAutoReopen({
-    topicId: 42,
-    sendToTopic: async () => {
-      sends += 1;
-      if (sends === 1) throw apiError('Bad Request: TOPIC_CLOSED');
-    },
-    reopenTopic: async () => {
-      reopens += 1;
-    },
-  });
-  assert.equal(sends, 2);
-  assert.equal(reopens, 1);
-
-  reopens = 0;
-  await assert.rejects(
-    mod.forwardWithAutoReopen({
+  // The first send fails with the given description; later sends succeed.
+  async function run(failWith: string): Promise<string[]> {
+    const log: string[] = [];
+    let first = true;
+    await mod.deliverToTopic({
       topicId: 42,
-      sendToTopic: async () => {
-        throw apiError('Bad Request: not enough rights');
+      send: async (topicId: number) => {
+        log.push(`send:${topicId}`);
+        if (first) {
+          first = false;
+          throw apiError(failWith);
+        }
       },
-      reopenTopic: async () => {
-        reopens += 1;
+      reopen: async (topicId: number) => {
+        log.push(`reopen:${topicId}`);
       },
-    }),
-    /not enough rights/
-  );
-  assert.equal(reopens, 0, 'unrelated errors must not trigger a reopen');
+      recreate: async () => {
+        log.push('recreate');
+        return 43;
+      },
+    });
+    return log;
+  }
+
+  assert.deepEqual(await run('Bad Request: TOPIC_CLOSED'), ['send:42', 'reopen:42', 'send:42']);
+  assert.deepEqual(await run('Bad Request: message thread not found'), ['send:42', 'recreate', 'send:43']);
+  await assert.rejects(run('Bad Request: not enough rights'), /not enough rights/);
 });

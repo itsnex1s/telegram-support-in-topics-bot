@@ -132,3 +132,19 @@ test('closed topic is reopened before the message is forwarded', async () => {
   await bot.handleUpdate(userMessage(4, { text: 'still there?' }));
   assert.deepEqual(methods(calls), ['forwardMessage', 'reopenForumTopic', 'forwardMessage']);
 });
+
+test('deleted topic is recreated and the message goes to the new one', async () => {
+  store.setMapping(5, 15);
+  const { bot, calls } = createTestBot(({ method, payload }) => {
+    if (method === 'forwardMessage' && payload.message_thread_id === 15) {
+      return { ok: false, error_code: 400, description: 'Bad Request: message thread not found' };
+    }
+    return method === 'createForumTopic' ? forumTopic(16) : undefined;
+  });
+  await bot.handleUpdate(userMessage(5, { text: 'hello?' }));
+  assert.deepEqual(methods(calls), ['forwardMessage', 'createForumTopic', 'sendMessage', 'forwardMessage']);
+  assert.equal(calls[3].payload.message_thread_id, 16);
+  assert.equal(store.getTopicId(5), 16);
+  assert.equal(store.getUserId(16), 5);
+  assert.equal(store.getUserId(15), undefined, 'stale topic mapping must be dropped');
+});

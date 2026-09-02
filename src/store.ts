@@ -56,6 +56,8 @@ export function getUserId(topicId: number): number | undefined {
 }
 
 export function setMapping(userId: number, topicId: number): void {
+  const previous = userIdToTopicId.get(userId);
+  if (previous !== undefined) topicIdToUserId.delete(previous);
   userIdToTopicId.set(userId, topicId);
   topicIdToUserId.set(topicId, userId);
   persist();
