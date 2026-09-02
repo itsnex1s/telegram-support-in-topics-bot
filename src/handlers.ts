@@ -168,7 +168,12 @@ export function registerHandlers(bot: Bot): void {
       const userId = store.getUserId(ctx.msg.message_thread_id);
       if (!userId) return;
 
-      await ctx.copyMessage(userId);
+      try {
+        await ctx.copyMessage(userId);
+      } catch (err) {
+        const reason = err instanceof GrammyError ? err.description : String(err);
+        await ctx.reply(`⚠️ Not delivered: ${reason}`, { reply_parameters: { message_id: ctx.msg.message_id } });
+      }
     }
   });
 }

@@ -148,3 +148,26 @@ test('deleted topic is recreated and the message goes to the new one', async () 
   assert.equal(store.getUserId(16), 5);
   assert.equal(store.getUserId(15), undefined, 'stale topic mapping must be dropped');
 });
+
+test('operator reply is copied to the user', async () => {
+  store.setMapping(6, 17);
+  const { bot, calls } = createTestBot();
+  await bot.handleUpdate(topicMessage(17, { text: 'Hello from support' }));
+  assert.deepEqual(methods(calls), ['copyMessage']);
+  assert.equal(calls[0].payload.chat_id, 6);
+});
+
+test('operator is told when the reply could not be delivered', async () => {
+  store.setMapping(7, 18);
+  const { bot, calls } = createTestBot(({ method }) =>
+    method === 'copyMessage' ? { ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' } : undefined
+  );
+  const update = topicMessage(18, { text: 'Are you there?' });
+  await bot.handleUpdate(update);
+  assert.deepEqual(methods(calls), ['copyMessage', 'sendMessage']);
+  const notice = calls[1].payload;
+  assert.equal(notice.chat_id, STAFF_GROUP_ID);
+  assert.equal(notice.message_thread_id, 18);
+  assert.match(String(notice.text), /blocked by the user/);
+  assert.deepEqual(notice.reply_parameters, { message_id: update.message?.message_id });
+});

@@ -27,6 +27,7 @@
 - JSON file persistence — no database required
 - Auto-reopens closed topics and recreates deleted ones when users send new messages
 - Operator commands: close, reopen, ban, unban
+- Operators are told when a reply could not be delivered (e.g. the user blocked the bot)
 
 ## How it works
 
