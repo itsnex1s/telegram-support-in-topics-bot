@@ -100,3 +100,26 @@ test('handlers: deliverToTopic reopens on TOPIC_CLOSED, recreates on a missing t
   assert.deepEqual(await run('Bad Request: message thread not found'), ['send:42', 'recreate', 'send:43']);
   await assert.rejects(run('Bad Request: not enough rights'), /not enough rights/);
 });
+
+test('bot: API call is repeated once after a 429 with retry_after', async () => {
+  process.env.SUPPORT_BOT_TOKEN = 'test-token';
+  process.env.SUPPORT_STAFF_GROUP_ID = '-100123456789';
+  const mod = await import(moduleUrl('src/bot.ts'));
+
+  let attempts = 0;
+  const flooded = async () =>
+    ++attempts === 1
+      ? { ok: false, error_code: 429, description: 'Too Many Requests: retry after 1', parameters: { retry_after: 0 } }
+      : { ok: true, result: true };
+  const res = await mod.retryAfterFlood(flooded, 'sendMessage', { chat_id: 1, text: 'hi' });
+  assert.equal(attempts, 2);
+  assert.equal(res.ok, true);
+
+  attempts = 0;
+  const denied = async () => {
+    attempts += 1;
+    return { ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' };
+  };
+  assert.equal((await mod.retryAfterFlood(denied, 'sendMessage', {})).ok, false);
+  assert.equal(attempts, 1, 'other errors are not retried');
+});

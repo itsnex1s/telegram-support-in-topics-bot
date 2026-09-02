@@ -107,7 +107,7 @@ npm start
 src/
   index.ts      — Entry point: polling + graceful shutdown
   config.ts     — Environment variables with fail-fast validation
-  bot.ts        — createBot() factory
+  bot.ts        — createBot() factory, retries API calls after 429
   handlers.ts   — Message and command handlers
   store.ts      — In-memory store with JSON file persistence
 ```
