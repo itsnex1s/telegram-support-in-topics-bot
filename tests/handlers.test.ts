@@ -191,3 +191,14 @@ test('/start greets users but ignores banned ones', async () => {
   assert.deepEqual(methods(calls), ['sendMessage']);
   assert.equal(calls[0].payload.chat_id, 10);
 });
+
+test('service messages inside a topic are not copied to the user', async () => {
+  store.setMapping(11, 20);
+  const { bot, calls } = createTestBot();
+  const pinned = { message_id: 1, date: 0, chat: { id: STAFF_GROUP_ID, type: 'supergroup', title: 'Staff' }, text: 'info' };
+  await bot.handleUpdate(topicMessage(20, { pinned_message: pinned }));
+  assert.equal(calls.length, 0);
+  const sticker = { file_id: 'f', file_unique_id: 'u', type: 'regular', width: 1, height: 1, is_animated: false, is_video: false };
+  await bot.handleUpdate(topicMessage(20, { sticker }));
+  assert.deepEqual(methods(calls), ['copyMessage']);
+});

@@ -6,6 +6,12 @@ import * as store from './store.js';
 const staffGroupId = config.SUPPORT_STAFF_GROUP_ID;
 const MAX_TOPIC_NAME = 128;
 
+// Message kinds copyMessage can deliver. Service, invoice, giveaway and paid-media messages cannot be copied.
+const COPYABLE_FIELDS = [
+  'text', 'animation', 'audio', 'document', 'photo', 'sticker', 'story', 'video', 'video_note',
+  'voice', 'contact', 'dice', 'game', 'poll', 'venue', 'location', 'checklist',
+];
+
 function userDisplayName(from: User): string {
   const name = from.last_name ? `${from.first_name} ${from.last_name}` : from.first_name;
   return from.username ? `${name} (@${from.username})` : name;
@@ -162,8 +168,8 @@ export function registerHandlers(bot: Bot): void {
 
     // Staff group: operator reply → user
     if (ctx.chat.id === staffGroupId && ctx.msg.message_thread_id) {
-      // Ignore service messages
-      if (ctx.msg.forum_topic_created || ctx.msg.forum_topic_closed || ctx.msg.forum_topic_reopened || ctx.msg.forum_topic_edited) return;
+      // Skip service messages and other content copyMessage cannot deliver
+      if (!COPYABLE_FIELDS.some((field) => field in ctx.msg)) return;
       // Ignore bot's own messages
       if (ctx.from?.id === bot.botInfo.id) return;
       // Ignore commands (already handled above)
