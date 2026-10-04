@@ -121,7 +121,7 @@ test('/close inside a topic closes it and notifies the user', async () => {
   assert.equal(calls[1].payload.chat_id, 3);
 });
 
-test('closed topic is reopened before the message is forwarded', async () => {
+test('a TOPIC_CLOSED answer reopens the topic and forwards the message again', async () => {
   store.setMapping(4, 14);
   let forwards = 0;
   const { bot, calls } = createTestBot(({ method }) =>
@@ -201,4 +201,30 @@ test('service messages inside a topic are not copied to the user', async () => {
   const sticker = { file_id: 'f', file_unique_id: 'u', type: 'regular', width: 1, height: 1, is_animated: false, is_video: false };
   await bot.handleUpdate(topicMessage(20, { sticker }));
   assert.deepEqual(methods(calls), ['copyMessage']);
+});
+
+test('service messages in private chat are ignored', async () => {
+  const { bot, calls } = createTestBot();
+  const pinned = { message_id: 1, date: 0, chat: { id: 12, type: 'private', first_name: 'Ann' }, text: 'hi' };
+  await bot.handleUpdate(userMessage(12, { pinned_message: pinned }));
+  assert.deepEqual(methods(calls), []);
+});
+
+test('a topic closed by an operator is reopened when the user writes again', async () => {
+  // Telegram lets the bot post into the topics it created even while they are closed
+  const closings: Array<[string, Record<string, unknown>]> = [
+    ['/close', command('/close')],
+    ['Telegram UI', { forum_topic_closed: {} }],
+  ];
+  for (const [index, [via, closing]] of closings.entries()) {
+    const userId = 13 + index;
+    const topicId = 21 + index;
+    store.setMapping(userId, topicId);
+    const { bot, calls } = createTestBot();
+    await bot.handleUpdate(topicMessage(topicId, closing));
+    calls.length = 0;
+    await bot.handleUpdate(userMessage(userId, { text: 'one more question' }));
+    assert.deepEqual(methods(calls), ['reopenForumTopic', 'forwardMessage'], `closed via ${via}`);
+    assert.equal(calls[0].payload.message_thread_id, topicId);
+  }
 });

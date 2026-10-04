@@ -7,7 +7,7 @@
     "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/index.js",
-    "test": "SUPPORT_BOT_TOKEN=test SUPPORT_STAFF_GROUP_ID=-100123456789 node --test --import tsx \"tests/**/*.test.ts\""
+    "test": "node --test --import tsx \"tests/**/*.test.ts\""
   },
   "keywords": [
     "telegram",
@@ -25,8 +25,12 @@
     "grammy": "^1.46.0"
   },
   "devDependencies": {
-    "@types/node": "^22.20.1",
-    "tsx": "^4.23.13",
-    "typescript": "^5.7.0"
+    "@types/node": "^22.20.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild": false,
+    "fsevents": false
   }
 }

@@ -73,6 +73,8 @@ SUPPORT_STAFF_GROUP_ID=-100123456789         # required
 SUPPORT_STORE_PATH=./data/topics.json        # optional, default
 ```
 
+Topics belong to the staff group they were created in. If you later point `SUPPORT_STAFF_GROUP_ID` at another group, the bot forgets the old topics on start (bans are kept) and opens a new topic with each user's next message.
+
 ### 5. Install and run
 
 Requires [Node.js](https://nodejs.org) 22.9 or newer.

@@ -8,9 +8,11 @@ const MAX_TOPIC_NAME = 128;
 
 // Message kinds copyMessage can deliver. Service, invoice, giveaway and paid-media messages cannot be copied.
 const COPYABLE_FIELDS = [
-  'text', 'animation', 'audio', 'document', 'photo', 'sticker', 'story', 'video', 'video_note',
-  'voice', 'contact', 'dice', 'game', 'poll', 'venue', 'location', 'checklist',
+  'text', 'rich_message', 'animation', 'audio', 'document', 'live_photo', 'photo', 'sticker', 'story', 'video',
+  'video_note', 'voice', 'contact', 'dice', 'game', 'poll', 'venue', 'location', 'checklist',
 ];
+// forwardMessage takes those four kinds as well; only service messages cannot be forwarded.
+const FORWARDABLE_FIELDS = [...COPYABLE_FIELDS, 'invoice', 'giveaway', 'giveaway_winners', 'paid_media'];
 
 function userDisplayName(from: User): string {
   const name = from.last_name ? `${from.first_name} ${from.last_name}` : from.first_name;
@@ -41,10 +43,20 @@ export function isTopicGone(err: unknown): boolean {
 
 export async function deliverToTopic(params: {
   topicId: number;
+  closed: boolean;
   send: (topicId: number) => Promise<void>;
   reopen: (topicId: number) => Promise<void>;
   recreate: () => Promise<number>;
 }): Promise<void> {
+  // The bot created the topic, so Telegram lets it post there even while the topic is closed
+  // instead of answering TOPIC_CLOSED: reopen a topic known to be closed before sending.
+  if (params.closed) {
+    try {
+      await params.reopen(params.topicId);
+    } catch {
+      // already open or deleted: the send below sorts that out
+    }
+  }
   try {
     await params.send(params.topicId);
   } catch (err) {
@@ -93,6 +105,7 @@ export function registerHandlers(bot: Bot): void {
     } catch {
       // topic may already be closed
     }
+    store.setClosed(topicId, true);
     if (userId) {
       await notifyUser(bot, userId, 'Your ticket has been closed. If you have more questions, just send a new message.');
     }
@@ -100,11 +113,13 @@ export function registerHandlers(bot: Bot): void {
 
   bot.command('reopen', async (ctx, next) => {
     if (ctx.chat.id !== staffGroupId || !ctx.msg.message_thread_id) return next();
+    const topicId = ctx.msg.message_thread_id;
     try {
-      await bot.api.reopenForumTopic(staffGroupId, ctx.msg.message_thread_id);
+      await bot.api.reopenForumTopic(staffGroupId, topicId);
     } catch {
       // topic may already be open
     }
+    store.setClosed(topicId, false);
   });
 
   bot.command('ban', async (ctx, next) => {
@@ -121,6 +136,7 @@ export function registerHandlers(bot: Bot): void {
     } catch {
       // topic may already be closed
     }
+    store.setClosed(topicId, true);
     await notifyUser(bot, userId, 'You have been blocked from support.');
     await ctx.reply(`User ${userId} has been banned.`);
   });
@@ -146,15 +162,19 @@ export function registerHandlers(bot: Bot): void {
       const userId = ctx.from.id;
 
       if (store.isBanned(userId)) return;
+      // Pins, auto-delete timer changes and other service messages cannot be forwarded
+      if (!FORWARDABLE_FIELDS.some((field) => field in ctx.msg)) return;
 
       try {
         const topicId = store.getTopicId(userId) ?? (await openTopic(bot, ctx.from));
         await deliverToTopic({
           topicId,
+          closed: store.isClosed(topicId),
           send: async (threadId) => {
             await ctx.forwardMessage(staffGroupId, { message_thread_id: threadId });
           },
           reopen: async (threadId) => {
+            store.setClosed(threadId, false);
             await bot.api.reopenForumTopic(staffGroupId, threadId);
           },
           recreate: () => openTopic(bot, ctx.from),
@@ -168,6 +188,9 @@ export function registerHandlers(bot: Bot): void {
 
     // Staff group: operator reply → user
     if (ctx.chat.id === staffGroupId && ctx.msg.message_thread_id) {
+      // Operators can also close and reopen topics from the Telegram UI
+      if (ctx.msg.forum_topic_closed) store.setClosed(ctx.msg.message_thread_id, true);
+      if (ctx.msg.forum_topic_reopened) store.setClosed(ctx.msg.message_thread_id, false);
       // Skip service messages and other content copyMessage cannot deliver
       if (!COPYABLE_FIELDS.some((field) => field in ctx.msg)) return;
       // Ignore bot's own messages

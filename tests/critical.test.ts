@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -18,14 +18,16 @@ async function importConfigWith(staffGroupId: string) {
   return await import(moduleUrl('src/config.ts'));
 }
 
-function runStoreLoad(storePath: string): { status: number | null; stderr: string } {
+// Loads the store in a fresh process, as config is read once per process, and reports what it holds
+// afterwards: the topic of user 1, whether topic 10 is closed and whether user 3 is banned.
+function runStoreLoad(storePath: string): { status: number | null; stderr: string; state?: unknown } {
   const proc = spawnSync(
     process.execPath,
     [
       '--import',
       'tsx',
       '-e',
-      "import('./src/store.ts').then((m)=>m.load()).catch((e)=>{console.error(String(e?.message ?? e)); process.exit(1);})",
+      "import('./src/store.ts').then((m)=>{m.load(); console.log('STATE ' + JSON.stringify({ topicId: m.getTopicId(1) ?? null, closed: m.isClosed(10), banned: m.isBanned(3) }));}).catch((e)=>{console.error(String(e?.message ?? e)); process.exit(1);})",
     ],
     {
       cwd: process.cwd(),
@@ -38,7 +40,8 @@ function runStoreLoad(storePath: string): { status: number | null; stderr: strin
       encoding: 'utf8',
     }
   );
-  return { status: proc.status, stderr: proc.stderr };
+  const state = /^STATE (.+)$/m.exec(proc.stdout)?.[1];
+  return { status: proc.status, stderr: proc.stderr, state: state && JSON.parse(state) };
 }
 
 test('config: invalid SUPPORT_STAFF_GROUP_ID fails fast', async () => {
@@ -63,21 +66,46 @@ test('store.load: ENOENT starts fresh, corrupted JSON fails fast', async () => {
   assert.match(broken.stderr, /Failed to load store/);
 });
 
+test('store.load: restores topics, closed topics and bans, but drops topics of another staff group', () => {
+  const root = mkdtempSync(join(tmpdir(), 'support-bot-store-'));
+  function load(name: string, extra: object): unknown {
+    const path = join(root, name);
+    writeFileSync(path, JSON.stringify({ topics: [{ userId: 1, topicId: 10 }], banned: [3], ...extra }));
+    return runStoreLoad(path).state;
+  }
+
+  assert.deepEqual(load('other-group.json', { staffGroupId: -100999, closed: [10] }), {
+    topicId: null,
+    closed: false,
+    banned: true,
+  });
+  assert.deepEqual(load('same-group.json', { staffGroupId: -100123456789, closed: [10] }), {
+    topicId: 10,
+    closed: true,
+    banned: true,
+  });
+  assert.deepEqual(load('no-group.json', {}), { topicId: 10, closed: false, banned: true });
+  const stamped = JSON.parse(readFileSync(join(root, 'no-group.json'), 'utf8'));
+  assert.equal(stamped.staffGroupId, -100123456789, 'a later switch to another group must be detectable');
+});
+
 function apiError(description: string): GrammyError {
   return new GrammyError('Call to forwardMessage failed!', { ok: false, error_code: 400, description }, 'forwardMessage', {});
 }
 
-test('handlers: deliverToTopic reopens on TOPIC_CLOSED, recreates on a missing thread, rethrows the rest', async () => {
+test('handlers: deliverToTopic reopens closed topics, recreates missing ones, rethrows the rest', async () => {
   process.env.SUPPORT_BOT_TOKEN = 'test-token';
   process.env.SUPPORT_STAFF_GROUP_ID = '-100123456789';
   const mod = await import(moduleUrl('src/handlers.ts'));
 
-  // The first send fails with the given description; later sends succeed.
-  async function run(failWith: string): Promise<string[]> {
+  // The first send fails with the given description; later sends succeed. Reopening a topic known
+  // to be closed fails here, as it does once an operator has deleted the topic.
+  async function run(failWith: string, closed = false): Promise<string[]> {
     const log: string[] = [];
     let first = true;
     await mod.deliverToTopic({
       topicId: 42,
+      closed,
       send: async (topicId: number) => {
         log.push(`send:${topicId}`);
         if (first) {
@@ -87,6 +115,7 @@ test('handlers: deliverToTopic reopens on TOPIC_CLOSED, recreates on a missing t
       },
       reopen: async (topicId: number) => {
         log.push(`reopen:${topicId}`);
+        if (closed) throw apiError('Bad Request: TOPIC_ID_INVALID');
       },
       recreate: async () => {
         log.push('recreate');
@@ -98,6 +127,12 @@ test('handlers: deliverToTopic reopens on TOPIC_CLOSED, recreates on a missing t
 
   assert.deepEqual(await run('Bad Request: TOPIC_CLOSED'), ['send:42', 'reopen:42', 'send:42']);
   assert.deepEqual(await run('Bad Request: message thread not found'), ['send:42', 'recreate', 'send:43']);
+  assert.deepEqual(await run('Bad Request: message thread not found', true), [
+    'reopen:42',
+    'send:42',
+    'recreate',
+    'send:43',
+  ]);
   await assert.rejects(run('Bad Request: not enough rights'), /not enough rights/);
 });
 
